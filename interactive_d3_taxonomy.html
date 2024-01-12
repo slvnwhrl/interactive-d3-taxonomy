@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>A taxonomy (using d3.js v6)</title>
+    <meta charset="utf-8"/>
+    <script src="https://d3js.org/d3.v6.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css" integrity="sha384-B0vP5xmATw1+K9KRQjQERJvTumQW0nPEzvF6L/Z6nronJ3oUOFUFpCjEUQouq2+l" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-Piv4xVNRyMGpqkS2by6br4gNJ7DXjqk09RmUpJ8jgGtD7zP9yug3goQfGII0yAns" crossorigin="anonymous"></script>
+    <style>
+        body {
+            font-family: Arial;
+        }
+        #title {
+            font-size: 30px;
+            margin-top: 20px;
+        }
+        .container {
+            margin: 0 auto;
+        }
+        .text-center {
+            text-align: center;
+        }
+        #concept-tree {
+            height: 800px;
+            width: 80%;
+            margin: 0 auto;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+        .link {
+            fill: none;
+            stroke: #9BBAFF;
+            stroke-width: 1.5px;
+        }
+
+        .node {
+            cursor: pointer;
+        }
+
+        .templink {
+            fill: none;
+            stroke: red;
+            stroke-width: 3px;
+        }
+
+        .ghostCircle.show{
+            display:block;
+        }
+
+        .ghostCircle, .activeDrag .ghostCircle{
+            display: none;
+        }
+
+        .context-menu {
+            position: absolute;
+            display: none;
+            background-color: #FFFFFF;
+            min-width: 150px;
+            border-radius: 4px;
+            border: 1px;
+            z-index:999;
+            font-family: Arial, sans-serif;
+            padding: 10px;
+            box-shadow: -1px 1px 2px #666;
+        }
+        .context-menu ul {
+            list-style-type: none;
+            margin: 4px 0px;
+            padding: 0px;
+        }
+        .context-menu ul li {
+            padding: 4px 16px;
+            cursor: pointer;
+        }
+
+        .context-menu ul li:hover {
+            background-color: #4677f8;
+            color: #fefefe;
+        }
+
+        .context-menu .title-context {
+            padding: 4px 4px;
+            font-weight: bold;
+        }
+        #options {
+            position: absolute;
+            display: inline-block;
+            left: 75%;
+            z-index: 999;
+            top: 20%;
+            background-color: white;
+            width: 10%;
+        }
+        #export-button {
+            cursor: pointer;
+        }
+        #tooltip {
+            position: absolute;
+            background-color: transparent;
+            width: 150px;
+            height: 15px;
+            border: none;
+            font-family: Arial, sans-serif;
+            transition: opacity 500ms, width 500ms, height 500ms, left 500ms;
+            opacity: 0;
+            z-index: 1000;
+        }
+        #tooltip.out {
+            opacity: 0;
+        }
+        #tooltip.in {
+            opacity: 1;
+        }
+        #tooltip ul {
+            list-style-type: none;
+            padding-left: 4px;
+            padding-right: 4px;
+        }
+        #tooltip ul li {
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #F0F8FF;
+        }
+        #tooltip mark {
+            background-color: yellow;
+        }
+        #tooltip button {
+            background: #1E61FB;
+            padding: 5px;
+            border-radius: 5px;
+            color: white;
+            border: none;
+            font: inherit;
+            cursor: pointer;
+            outline: inherit;
+            box-shadow: -1px 1px 2px #666;
+        }
+        #options .header {
+            background-color: #9BBAFF;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- title -->
+        <h1 class="text-center" id="title">a taxonomy</h1>
+        <!-- svg for tree -->
+        <div id="concept-tree">
+            <!-- the svg will be here -->
+        </div>
+        <!-- options -->
+        <div id="options">
+            <div class="mb-4" id="data">
+                <div class="header mb-1">
+                    <span>Data</span>
+                </div>
+                <!-- buttons for importing/exporting json files -->
+                <div class="mb-1"><button class="btn btn-sm btn-outline-dark w-100" id="import-button" onclick="document.getElementById('upload-input').click()">Import hierarchy</button></div>
+                <input id="upload-input" type="file" accept="application/JSON" hidden/>
+                <div><a class="btn btn-sm btn-outline-dark w-100" id="export-button" onclick="exportHierarchy(root, this)">Export hierarchy</a></div>
+            </div>
+            <div class="mb-4" id="props">
+                <div class="header mb-1">
+                    <span>Props</span>
+                </div>
+                <label for="layout">Layout</label>
+                <select name="layout" class="ml-3" id="layout">
+                    <option value="radial">radial</option>
+                    <option value="horizontal" selected>horizontal</option>
+                </select>
+                <div>
+                    <label for="width-range" class="form-label">Width</label>
+                    <input type="range" class="form-range" min="0" max="100" id="width-range">
+                </div>
+                <div>
+                    <label for="depth-range" class="form-label">Depth</label>
+                    <input type="range" class="form-range" min="0" max="1000" id="depth-range">
+                </div>
+                <div>
+                    <label for="text-range" class="form-label">Text</label>
+                    <input type="range" class="form-range" min="5" max="30" value="15" id="text-range">
+                </div>
+            </div>
+        </div>
+        <!-- hidden by default -->
+        <!-- modal for renaming node -->
+        <div class="modal fade" id="rename-modal" tabindex="-1" aria-labelledby="rename-modal-label" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="rename-modal-label">Rename node</h5>
+                    </div>
+                    <div class="modal-body">
+                        <input type="text" class="form-control" id="rename-input">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeRenameModal()">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="renameNode(document.getElementById('rename-input').value)">Save changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- modal for exploration terms -->
+        <div class="modal fade" id="exploration-terms-modal" tabindex="-1" aria-labelledby="exploration-terms-label" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header" id="exploration-terms-header">
+                        <h5 class="modal-title" id="exploration-terms-label"></h5>
+                    </div>
+                    <div class="modal-body" id="exploration-terms-content">
+                    </div>
+                    <div class="modal-footer" id="exploraiton-terms-footer">
+                        <button type="button" class="btn btn-secondary" onclick="cancelExplTermsModal()">Close</button>
+                        <button type="button" class="btn btn-primary" id="safe-expl-terms">Save changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- tooltip -->
+        <div id="tooltip"></div>
+        <!-- tooltip modal -->
+        <div class="modal fade" id="tooltip-modal" tabindex="-1" aria-labelledby="tooltip-modal-label" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header d-block" id="tooltip-modal-header">
+                        <div class="d-flex">
+                            <h5 class="modal-title" id="tooltip-modal-label"></h5>
+                        </div>
+                    </div>
+                    <div class="modal-body" id="tooltip-modal-content">
+                    </div>
+                    <div class="modal-footer" id="tooltip-modal-content">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <script>
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // DATA SECTION
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // default data for the taxonomy
+        var treeData = {
+                "name": "Top Level",
+                "parent": "null",
+                "children": [
+                    {
+                        "name": "Level 2: A",
+                        "parent": "Top Level",
+                        "children": [
+                            {
+                                "name": "Son of A",
+                                "parent": "Level 2: A"
+                            },
+                            {
+                                "name": "Daughter of A",
+                                "parent": "Level 2: A"
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Level 2: B",
+                        "parent": "Top Level"
+                    }
+                ]
+            };
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // INITIALIZATION
+        // this section declares various variable that are used globally
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // svg
+        var margin = {top: 20, right: 90, bottom: 30, left: 90},
+            width = 1500
+            height = 750;
+
+        // svg container and group for holding the tree dom elements
+        const svg = d3.select("#concept-tree").append("svg")
+                .attr("viewbox", "0 0 3 1"),
+            g = svg.append("g")
+
+        // duration for translation effects
+        var duration = 750;
+
+        // stores the node that is renamed
+        var nodeToRename = null;
+        // stores the node that the dragged node is appended to
+        var selectedNode = null;
+        // stores the node that is currently being dragged
+        var draggingNode = null;
+        var i = 0;
+
+        // boolen to activate/deactivate tooltip function
+        var tpActive = true;
+        // stores the node that is explored
+        var explorationNode = null;
+
+        // stores sizing information for different layouts (horizontal, radial) and corresponding functions to access
+        // values
+        var sizing = {
+            'horizontal': {
+                width: 100,
+                depth: 100,
+                max_w: 1000,
+                max_d: 1000
+            },
+            'radial': {
+                width: 50,
+                depth: 50,
+                max_w: 200,
+                max_d: 200,
+            },
+            depth: function() {
+                var layout = document.getElementById('layout').value;
+                return this[layout].depth;
+            },
+            width: function() {
+                var layout = document.getElementById('layout').value;
+                return this[layout].width;
+            },
+            mDepth: function() {
+                var layout = document.getElementById('layout').value;
+                return this[layout].max_d;
+            },
+            mWidth: function() {
+                var layout = document.getElementById('layout').value;
+                return this[layout].max_w;
+            }
+        }
+
+        // declares a tree layout and assigns the size
+        var treemap = d3.tree().nodeSize([sizing.width(), sizing.depth()]);
+
+        // declare root node
+        root = d3.hierarchy(treeData, function(d) { return d.children; });
+        root.x0 = height / 2;
+        root.y0 = 0;
+
+        // assigns the x and y position for the nodes
+        var treeData = treemap(root);
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // FUUNCTIONS
+        // this section declares various functions that are used for the visualization
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // draw the connection between nodes
+        // horizontal layout for links
+        function diagonal(obj) {
+            var s = obj.source,
+                t = obj.target;
+
+            path = `M ${s.y} ${s.x}
+            C ${(s.y + t.y) / 2} ${s.x},
+              ${(s.y + t.y) / 2} ${t.x},
+              ${t.y} ${t.x}`
+
+            return path
+        }
+
+        // radial layout for links
+        const radial = d3.linkRadial()
+            .angle(d => d.x)
+            .radius(d => d.y);
+
+        // switcher function that is called when changing layout
+        function layoutLink() {
+            var layout = document.getElementById('layout').value;
+
+            switch (layout) {
+                case 'horizontal':
+                    return diagonal;
+
+                case 'radial':
+                    return radial;
+            }
+            return diagonal;
+        }
+
+        // layout for nodes
+        function layoutNode (d, x="x", y="y") {
+            var layout = document.getElementById('layout').value;
+
+            switch (layout) {
+                case 'horizontal':
+                    return "translate(" + d[y] + "," + d[x] + ")";
+
+                case 'radial':
+                    return `rotate(${d[x] * 180 / Math.PI - 90}) translate(${d[y]},0)`;
+            }
+        }
+
+        // event function, i.e. is called when changing layout
+        function changeLayout() {
+            var layout = document.getElementById('layout').value;
+            var width = document.getElementById('width-range');
+            var depth = document.getElementById('depth-range');
+
+            switch (layout) {
+                case 'horizontal':
+                    treemap = d3.tree().size([sizing.width(), sizing.depth()]);
+                    break;
+
+                case 'radial':
+                    treemap = d3.cluster().nodeSize([sizing.width()/100, sizing.depth()]).separation((a, b) => (a.parent == b.parent ? 1 : 2) / a.depth);
+                    break;
+            }
+
+            width.value = sizing.width();
+            depth.value = sizing.depth();
+            width.max = sizing.mWidth();
+            depth.max = sizing.mDepth();
+
+            // update
+            update(root);
+
+            // and center
+            centerNode(root);
+        }
+
+        // function to change text size
+        function textSize() {
+            var textSize = document.getElementById('text-range').value;
+            return textSize + "px";
+        }
+
+        // enables zooming
+        var zoomEvent = d3.zoom()
+            .extent([[0, 0], [width, height]])
+            .scaleExtent([0.5, 10])
+            .on("zoom", zoomed)
+
+        svg.call(zoomEvent);
+
+        function zoomed({transform}) {
+            g.attr("transform", transform);
+        }
+
+        // collapse the node and all it's children
+        function collapse(d) {
+            if(d.children) {
+                d._children = d.children
+                d._children.forEach(collapse)
+                d.children = null
+            }
+        }
+
+        // expand the node and all it's children
+        function expand(d) {
+            if (d._children) {
+                d.children = d._children;
+                d.children.forEach(expand);
+                d._children = null;
+            }
+        }
+
+        // functions for hovering over node
+        // used to declare selectedNode
+        var overCircle = function(d) {
+            selectedNode = d;
+        };
+        // reset selectedNode
+        var outCircle = function(d) {
+            selectedNode = null;
+        };
+
+        // center the node
+        function centerNode(source) {
+            t = d3.zoomTransform(svg.node());
+            x = -source.y0; // here
+            y = -source.x0; // here
+            x = x * t.k + width / 2;
+            y = y * t.k + height / 2;
+            d3.select('svg').transition().duration(duration).call( zoomEvent.transform, d3.zoomIdentity.translate(x,y).scale(t.k) );
+        }
+
+        // toggle children on click
+        function click(event, d) {
+            if (event.defaultPrevented) return;
+
+            if (d.children) {
+                d._children = d.children;
+                d.children = null;
+            } else {
+                d.children = d._children;
+                d._children = null;
+            }
+            update(d);
+            //centerNode(d);
+        }
+
+        // +++ DRAG AND DROP +++ //
+        function dragEvent() {
+            function dragstarted(event, d) {
+                if (d == root) {
+                    return
+                }
+                event.sourceEvent.stopPropagation();
+
+                // instantly close tooltip
+                d3.select('#tooltip').remove();
+                // and deactivate tooltip
+                tpActive = false;
+
+                // remove background from node text
+                d3.selectAll('.nodeTextBg').style('fill', 'transparent');
+
+            }
+            function dragged(event, d) {
+                if (d == root) {
+                    return
+                }
+                var domNode = this;
+                initiateDrag(d, domNode);
+                // move node
+                d.x += event.dy; // here
+                d.y += event.dx; // here
+                var node = d3.select(this);
+
+                // ugly but works
+                if (document.getElementById('layout').value == 'radial') {
+                    var string = node.attr("transform"),
+                        translate = string.substring(string.indexOf("(")+1, string.indexOf(")")).split(","),
+                        rotate = string.substring(string.indexOf("(", string.indexOf("(")+1)+1, string.indexOf(")", string.indexOf(")")+1)).split(",");
+                    node.attr("transform", "translate(" + (parseFloat(translate[0])+parseFloat(event.dx)) + "," + (parseFloat(translate[1])+parseFloat(event.dy)) + ")" + " rotate" + "(" + rotate + ")");
+                }
+                else {
+                    node.attr("transform", "translate(" + d.y + "," + d.x + ")"); // here
+                }
+            }
+
+            function dragended(event, d) {
+                if (d == root) {
+                    return
+                }
+
+                var domNode = this;
+
+                function endDrag() {
+                    //selectedNode = null;
+                    d3.selectAll('.ghostCircle').attr('class', 'ghostCircle');
+                    d3.select(domNode).attr('class', 'node');
+                    // now restore the mouseover event or we won't be able to drag a 2nd time
+                    d3.select(domNode).select('.ghostCircle').attr('pointer-events', '');
+                    d3.select(domNode).attr('pointer-events', '');
+                    //updateTempConnector();
+                    if (draggingNode !== null) {
+                        if (selectedNode !== null) {
+                            update(selectedNode);
+                        }
+                        else {
+                            update(root);
+                        }
+                        centerNode(draggingNode);
+                        draggingNode = null;
+                    }
+                    selectedNode = null;
+                }
+
+                if (selectedNode) {
+                    // now remove the element from the parent, and insert it into the new elements children
+                    var index = draggingNode.parent.children.indexOf(draggingNode);
+                    var index2 = null;
+                    if (index === -1 && typeof draggingNode.parent._children !== 'undefined') {
+                        index2 = draggingNode.parent._children.indexOf(node)
+                    }
+                    if (index !== null || index2 !== null) {
+                        if (index !== null) {
+                            // remove child from current parent
+                            draggingNode.parent.children.splice(index, 1);
+                            // this needs to be done otherwise recomputing the tree will fail
+                            // d3 expects the array to be non-empty, see https://github.com/d3/d3-hierarchy/issues/144
+                            if (draggingNode.parent.children.length == 0) {
+                                draggingNode.parent.children = null;
+                            }
+
+                        }
+                        else {
+                            // remove child from current parent
+                            draggingNode.parent._children.splice(index, 1);
+                            // this needs to be done otherwise recomputing the tree will fail
+                            // d3 expects the array to be non-empty, see https://github.com/d3/d3-hierarchy/issues/144
+                            if (draggingNode.parent._children.length == 0) {
+                                draggingNode.parent._children = null;
+                            }
+                        }
+
+                        oldParent = draggingNode.parent.copy();
+                        // set new parent
+                        draggingNode.parent = selectedNode;
+                        // set new height and depth for draggingNode at new position
+                        draggingNode.depth = selectedNode.depth; // depth is increased later
+                        draggingNode.height = selectedNode.height;
+                        // set new depth for children at new position
+                        setDepth(draggingNode, draggingNode.depth);
+                    }
+                    if ((typeof selectedNode.children !== 'undefined' && selectedNode.children !== null) ||
+                        (typeof selectedNode._children !== 'undefined' && selectedNode._children !== null)) {
+                        if (selectedNode.children !== null) {
+                            selectedNode.children.push(draggingNode);
+                            selectedNode.data.children.push(draggingNode);
+
+                        } else {
+                            selectedNode._children.push(draggingNode);
+                            if (!selectedNode.data._children) {
+                                selectedNode.data._children = [draggingNode];
+                            }
+                        }
+                    } else {
+                        selectedNode.children = [];
+                        selectedNode.data.children = [];
+                        selectedNode.children.push(draggingNode);
+                        selectedNode.data.children.push(draggingNode);
+                    }
+                    // set new height for ascendants at new position
+                    setHeight(selectedNode);
+                    // make sure that the node being added to is expanded so user can see added node is correctly moved
+                    expand(selectedNode);
+                    //sortTree();
+                    endDrag();
+                } else {
+                    endDrag();
+                }
+
+                // add background back
+                d3.selectAll('.nodeTextBg').style('fill', 'white');
+
+                // activate tooltip but wait for transition to end
+                setTimeout(function() {tpActive = true}, duration);
+            }
+
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
+
+        function initiateDrag(d, domNode) {
+            var nodes = d.descendants().slice(1),
+                links = d.descendants();
+
+            draggingNode = d;
+            d3.select(domNode).select('.ghostCircle').attr('pointer-events', 'none');
+            d3.select(domNode).attr('pointer-events', 'none');
+            d3.selectAll('.ghostCircle').attr('class', 'ghostCircle show');
+            d3.select(domNode).attr('class', 'node activeDrag');
+
+            // remove link paths
+            g.selectAll("path.link")
+                .data(links, function(d) {
+                    return d.id;
+                }).remove();
+            // remove child nodes
+            g.selectAll("g.node")
+                .data(nodes, function(d) {
+                    return d.id;
+                }).remove();
+        }
+
+        // sets new depth for node and all its children
+        function setDepth(node, depth) {
+            node.depth = depth+1;
+            if (typeof node.children !== 'undefined' && node.children !== null) {
+                node.children.forEach(function(n, i) {
+                    setDepth(n, depth+1);
+                });
+
+            }
+            else if (typeof node._children !== 'undefined' && node._children !== null) {
+                node._children.forEach(function(n, i) {
+                    setDepth(n, depth+1);
+                });
+
+            }
+            // no children
+            return;
+        }
+
+        // setes new height for node and all its ancestors
+        function setHeight(node) {
+            if (typeof node.children !== 'undefined' && node.children !== null) {
+                node.height = d3.max(node.children.map(n => n.height)) + 1;
+            }
+            else if (typeof node._children !== 'undefined' && node._children !== null) {
+                node.height = d3.max(node._children.map(n => n.height)) + 1;
+            }
+            // no children
+            else {
+                node.height = 0;
+            }
+            // only if not root node
+            if (typeof node.parent !== 'undefined' && node.parent !== null) {
+                setHeight(node.parent);
+            }
+            return;
+        }
+
+        // +++ CONTEXT MENU +++ //
+        // adds a new child node to parent
+        function addChildNode(parent) {
+            // template
+            var newChild = {
+                'name': 'new node',
+                children: null
+            }
+
+            // create node object
+            newChild = d3.hierarchy(newChild);
+
+            // set internal parameters
+            // depth
+            newChild.depth = parent.depth + 1;
+            // height
+            // will always be a leaf
+            newChild.height = 0;
+
+            // set parent
+            newChild.parent = parent;
+
+            // add to parent's children
+            if (typeof parent.children !== 'undefined' && parent.children !== null) {
+                parent.children.push(newChild);
+                parent.data.children.push(newChild);
+            }
+            else if (typeof parent._children !== 'undefined' && parent._children !== null) {
+                parent._children.push(newChild);
+                parent.data._children.push(newChild);
+            }
+            else {
+                parent.children = [newChild];
+                parent.data.children = [newChild];
+            }
+
+            // recalculate height
+            setHeight(parent);
+
+            // update tree
+            update(parent);
+
+            // aaaaand center parent node
+            centerNode(parent);
+        }
+
+        // deletes the node (and its subtree)
+        function deleteSubTree(node) {
+
+            // does the actual deleting of the subtree
+            function traverseST(node) {
+                if (typeof node.children !== 'undefined' && node.children !== null) {
+                    node.children.forEach(function (n, i) {
+                        traverseST(n);
+                    });
+                    node.children = null;
+
+                }
+                else if (typeof node._children !== 'undefined' && node._children !== null) {
+                    node._children.forEach(function (n, i) {
+                        traverseST(n);
+                    });
+                    node._children = null;
+                }
+                return;
+            }
+
+            // delete the subtree
+            traverseST(node);
+
+            // now remove node from parent
+            var parent = node.parent;
+            if (parent !== null) {
+                var index = parent.children.indexOf(node);
+                if (index > -1) {
+                    parent.children.splice(index, 1);
+                    if (parent.children.length == 0) {
+                        parent.children = null;
+                    }
+                }
+                else if (typeof parent._children !== 'undefined') {
+                    index = parent._children.indexOf(node);
+                    if (index > -1) {
+                        parent._children.splice(index, 1);
+                        if (parent._children.length == 0) {
+                            parent._children = null;
+                        }
+                    }
+                }
+            }
+            // set new height for parent
+            // depth doesn't change
+            parent.height = 0;
+
+            // finally update tree
+            update(parent);
+
+            // aaaaand center parent node
+            centerNode(parent);
+        }
+
+        // defines the elements for the context menu -- tree part --
+        const menuTree = [
+            {
+                name: 'Rename node',
+                action: function(event, node) {
+                    // so we know which node to rename
+                    nodeToRename = node;
+                    openRenameModal(nodeToRename.data.name);
+                },
+            },
+            {
+                name: 'Add child node',
+                action: function(event, node) {
+                    addChildNode(node);
+                },
+            },
+            {
+                name: 'Delete node (and subtree)',
+                action: function(event, node) {
+                    deleteSubTree(node);
+                },
+            }
+        ]
+
+        // opens the context menu
+        function openContextMenu(event, node) {
+            // remove tooltip
+            d3.select('#tooltip').remove();
+
+            // create the div element that will hold the context menu
+            d3.selectAll('.context-menu').data([1])
+                .enter()
+                .append('div')
+                .attr('class', 'context-menu');
+
+            var contextMenu = d3.selectAll('.context-menu');
+
+            // reset content
+            contextMenu.html('');
+
+            // menu for manipulating tree
+            /*contextMenu.append("div")
+                .attr("class", "title-context")
+                .html("Tree modification");*/
+            var listTree = contextMenu.append('ul');
+            listTree.selectAll('li').data(menuTree).enter().append('li')
+                .html(d => d.name)
+                .on("click", function(event, d) {
+                    d.action(event, node);
+                    contextMenu.style('display', 'none');
+            })
+
+            // display context menu
+            contextMenu
+                .style('left', (event.pageX - 2) + 'px')
+                .style('top', (event.pageY - 2) + 'px')
+                .style('display', 'block');
+
+            // close menu
+            d3.select('body').on('click.context-menu', function() {
+                d3.select('.context-menu').style('display', 'none');
+            });
+
+            // prevent default behaviour
+            event.preventDefault()
+        }
+
+        // opens the modal for renaming a node
+        function openRenameModal(name) {
+            var input = document.getElementById('rename-input');
+
+            input.value = name;
+
+            $('#rename-modal').modal('show');
+
+        }
+
+        // closes the modal for renaming a node
+        function closeRenameModal() {
+            $("#rename-modal").modal('hide');
+            nodeToRename = null;
+        }
+
+        // renames a node
+        function renameNode(newName) {
+            // check if node to rename is set
+            if (nodeToRename !== null) {
+                nodeToRename.data.name = newName;
+            }
+            // update the tree
+            update(nodeToRename);
+
+            // and finally close the modal
+            closeRenameModal();
+        }
+
+        // opens dialog for exploration
+        function openTooltip(event, node) {
+            // check if exploration is enabled or tooltip deactivated
+            if (!tpActive) return;
+            // check if tooltip exists
+            tooltip = d3.select('#tooltip');
+            if (!tooltip.empty()) {
+                var id = window.setTimeout(function() {}, 0);
+
+                while (id--) {
+                    window.clearTimeout(id); // will do nothing if no timeout with id is present
+                }
+                // reset content
+                d3.select('#tooltip').html('');
+            }
+            // create new tooltip element
+            else {
+                tooltip = d3.select('body').append('div')
+                    .attr('id', 'tooltip')
+                    .on("mouseover", function(event, _) {
+                        var id = window.setTimeout(function() {}, 0);
+
+                        while (id--) {
+                            window.clearTimeout(id); // will do nothing if no timeout with id is present
+                        }
+                    })
+                    .on("mouseleave", closeTooltip);
+            }
+
+            // add content
+
+            // get position of target
+            var pos = event.target.getBoundingClientRect();
+
+            // display tooltip
+            tooltip
+                .style('left', (pos.x-30) + 'px')
+                .style('top', (pos.y - 30) + 'px')
+                .attr('class', 'in');
+        }
+
+        // closes tooltip
+        function closeTooltip(event, node) {
+            // set timeout
+            setTimeout(function() {
+                // transition out
+                d3.select("#tooltip").attr("class", "out");
+                // wait for transition to end
+               setTimeout(function() {
+                    d3.select("#tooltip").remove();
+                }, 500);
+            }, 1500);
+        }
+
+        // +++ EXPORT & IMPORT HIERARCHIES +++ //
+        // export the hierarchy in json file
+        function exportHierarchy(root, el) {
+            // converts hierarchy into json, starting from node
+            function toJson(node) {
+                // name
+                var obj = {name: node.data.name};
+                // parent
+                if (node.parent) obj.parent = node.parent.data.name;
+                // children
+                if (node.children) obj.children = node.children.map(toJson);
+                else if (node._children) obj.children = node._children.map(toJson);
+                else obj.children = [];
+
+                return obj;
+            }
+
+            // so then let's convert it
+            var json = toJson(root);
+
+            // and start the download
+            json = "text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(json));
+            el.setAttribute("href", "data:"+json);
+            el.setAttribute("download", "a_taxonomy.json");
+        }
+
+        // imports hierarchy in json file
+        function importHierarchy(event) {
+            // open upload dialog
+            var json = event.target.result;
+
+            // parse json
+            try {
+                json = JSON.parse(event.target.result);
+            }
+            catch (e) {
+                alert("Invalid JSON format. Upload failed.");
+                return;
+            }
+
+            // parse into hierarchy
+            try {
+                var hierarchy = d3.hierarchy(json, function(d) { return d.children; });
+            }
+            catch (e) {
+                alert("Invalid JSON format. See https://github.com/d3/d3-hierarchy/blob/v2.0.0/README.md#hierarchy for specifications.");
+                return;
+            }
+
+            // finally set new root object
+            root = hierarchy;
+            root.x0 = height / 2;
+            root.y0 = 0;
+
+            // and update tree
+            update(root);
+            // aaaaand center root node
+            centerNode(root);
+        }
+
+
+        // +++ MAIN FUNCTION +++ //
+        // this is the most important function, it gets called whenever there is an update to the tree
+        function update(source) {
+
+            // assigns the x and y position for the nodes
+            var treeData = treemap(root);
+
+            // compute the new tree layout
+            var nodes = treeData.descendants(),
+                links = treeData.descendants().slice(1);
+
+            // +++ NODES +++ //
+            // update nodes
+            var node = g.selectAll("g.node")
+                .data(nodes, function(d) {
+                    return d.id || (d.id = ++i);
+                });
+
+            // enter nodes
+            var nodeEnter = node.enter().append("g")
+                .attr("class", "node")
+                .call(dragEvent())
+                .attr("transform", d => layoutNode(source, "x0", "y0")) // here
+                .on("click", click)
+                .on("contextmenu", openContextMenu)
+                .on("mouseover", openTooltip)
+                .on("mouseleave", closeTooltip);
+
+            nodeEnter.append("circle")
+                .attr('class', 'nodeCircle')
+                .attr("r", 5)
+                .style("fill", function(d) {
+                    if (d.exploration && d.explTerms) {
+                        return "#D90C28";
+                    }
+                    return d._children ? "#1E61FB" : "#9BBAFF";
+                });
+
+            // for background of text
+            var backgroundColor = nodeEnter.append("rect")
+                .attr("class", "nodeTextBg");
+
+            nodeEnter.append("text")
+                .attr("x", function(d) {
+                    return d.children || d._children ? -10 : 10;
+                })
+                .attr("dy", ".35em")
+                .attr('class', 'nodeText')
+                .attr("text-anchor", function(d) {
+                    return d.children || d._children ? "end" : "start";
+                })
+                .text(function(d) {
+                    return d.data.name;
+                })
+                .style('font-size', textSize)
+                .style("fill-opacity", 1);
+
+            // for background of text part II
+            backgroundColor.attr("x", function(d){ return this.nextSibling.getBBox().x; })
+                .attr("y", function(d, i){ return  this.nextSibling.getBBox().y; })
+                .attr("width", function(d){ return this.nextSibling.getBBox().width; })
+                .attr("height", function(d) {return this.nextSibling.getBBox().height; })
+                .style("fill", "white");
+
+            // phantom node to give us mouseover in a radius around it
+            nodeEnter.append("circle")
+                .attr('class', 'ghostCircle')
+                .attr("r", 30)
+                .attr("opacity", 0.2) // change this to zero to hide the target area
+                .style("fill", "red")
+                .attr('pointer-events', 'all')
+                .on("mouseover", function(event, node) {
+                    overCircle(node);
+                })
+                .on("mouseleave", function(event, node) {
+                    outCircle(node);
+                });
+
+            // update
+            var nodeUpdate = nodeEnter.merge(node);
+
+            // update the text to reflect whether node has children or not
+            nodeUpdate.select('text')
+                .attr("x", function(d) {
+                    return d.children || d._children ? -10 : 10;
+                })
+                .attr("text-anchor", function(d) {
+                    return d.children || d._children ? "end" : "start";
+                })
+                .text(function(d) {
+                    return d.data.name;
+                })
+                .style('font-size', textSize);
+
+            // update bacckground rect
+            nodeUpdate.select("rect")
+                .attr("x", function(d){ return this.nextSibling.getBBox().x; })
+                .attr("y", function(d, i){ return  this.nextSibling.getBBox().y; })
+                .attr("width", function(d){ return this.nextSibling.getBBox().width; })
+                .attr("height", function(d) {return this.nextSibling.getBBox().height; });
+
+            // change the circle fill depending on whether it has children and is collapsed
+            node.select("circle.nodeCircle")
+                .attr("r", 4.5)
+                .style("fill", function(d) {
+                    if (d.exploration && d.explTerms) {
+                        return "#D90C28";
+                    }
+                    return d._children ? "#1E61FB" : "#9BBAFF";
+                });
+
+            // transition to the proper position for the node
+            nodeUpdate.transition()
+                .duration(duration)
+                .attr("transform", d => layoutNode(d)); // here
+
+
+            // exit nodes
+            var nodeExit = node.exit().transition()
+                .duration(duration)
+                .attr("transform", d => layoutNode(source)) // here
+                .remove();
+
+            nodeExit.select('circle')
+                .attr('r', 1e-6);
+
+            nodeExit.select('text')
+                .style('fill-opacity', 1e-6);
+
+
+            // +++ LINKS +++ //
+            // update links
+            var link = g.selectAll("path.link")
+                .data(links, function(d) {
+                    return d.id;
+                });
+
+            // enter any new links at the parent's previous position
+            var linkEnter = link.enter().insert("path", "g")
+                .attr("class", "link")
+                .attr("d", function(d) {
+                    var o = {x: source.x0, y: source.y0}
+                    return layoutLink()({source: o, target: o})
+                });
+
+            // update
+            var linkUpdate = linkEnter.merge(link);
+
+            // transition back to the parent element position
+            linkUpdate.transition()
+                .duration(duration)
+                .attr('d', function(d){ return layoutLink()({source: d, target: d.parent}) });
+
+            // remove any exiting links
+            var linkExit = link.exit().transition()
+                .duration(duration)
+                .attr('d', function(d) {
+                    var o = {x: source.x, y: source.y}
+                    return layoutLink()({source: o, target: o})
+                })
+                .remove();
+
+            // store old positions
+            nodes.forEach(function(d){
+                d.x0 = d.x;
+                d.y0 = d.y;
+            });
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // EVENT LISTENERS
+        // here event listener for various functionalities are added
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // width range
+        document.getElementById('width-range').addEventListener("change", function(event) {
+            var layout = document.getElementById('layout').value;
+            sizing[layout].width = event.target.value;
+            changeLayout();
+        })
+        // depth range
+        document.getElementById('depth-range').addEventListener("change", function(event) {
+            var layout = document.getElementById('layout').value;
+            sizing[layout].depth = event.target.value;
+            changeLayout();
+        })
+        // text size
+        document.getElementById('text-range').addEventListener("change", function() {
+            update(root);
+        })
+        // layout of the tree
+        document.getElementById('layout').addEventListener("change", function() {
+            changeLayout();
+        })
+        // json file import
+        document.getElementById('upload-input').addEventListener('change', function(event) {
+            var reader = new FileReader();
+            reader.onload = importHierarchy;
+            reader.readAsText(event.target.files[0]);
+        });
+        // autofocus when opening rename modal
+        document.getElementById('rename-modal').addEventListener('shown.bs.modal', function() {
+            document.getElementById('rename-input').focus();
+        });
+
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // START VISUALIZATION
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // collapse after the second level
+        //root.children.forEach(collapse);
+
+        // initialises the tree
+        update(root);
+        changeLayout();
+        centerNode(root);
+    </script>
+</body>
+</html>
